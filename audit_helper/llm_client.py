@@ -2,6 +2,7 @@
 LLM 客户端模块：封装 langchain_openai 调用
 """
 import json
+import logging
 import re
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -96,7 +97,11 @@ class LLMClient:
             user_message
         ]
 
-        response = self.client.invoke(messages)
+        try:
+            response = self.client.invoke(messages)
+        except Exception as e:
+            logging.error(f"LLM API 调用失败: {e}")
+            return {"category": "其他", "confidence": 0.0}
 
         # 解析响应
         return self._parse_response(response.content)
@@ -122,18 +127,27 @@ class LLMClient:
         try:
             # 尝试直接解析 JSON
             result = json.loads(response_text)
-            return {
-                "category": result.get("category", "其他"),
-                "confidence": float(result.get("confidence", 0.5))
-            }
+            return self._validate_result(result)
         except json.JSONDecodeError:
-            # 尝试提取 JSON
-            json_match = re.search(r'\{.*\}', response_text)
+            # 尝试提取 JSON（使用非贪婪匹配）
+            json_match = re.search(r'\{[^{}]*\}', response_text)
             if json_match:
-                result = json.loads(json_match.group())
-                return {
-                    "category": result.get("category", "其他"),
-                    "confidence": float(result.get("confidence", 0.5))
-                }
-            # 默认返回
+                try:
+                    result = json.loads(json_match.group())
+                    return self._validate_result(result)
+                except json.JSONDecodeError:
+                    logging.warning(f"无法解析提取的 JSON: {json_match.group()[:100]}")
+            # 解析失败，记录日志并返回默认值
+            logging.warning(f"无法解析 LLM 响应: {response_text[:100]}...")
             return {"category": "其他", "confidence": 0.0}
+
+    def _validate_result(self, result: dict) -> dict:
+        """验证并规范化结果"""
+        category = result.get("category", "其他")
+        # 验证 category 是否在有效列表中
+        if category not in PDF_CATEGORIES:
+            category = "其他"
+        return {
+            "category": category,
+            "confidence": float(result.get("confidence", 0.5))
+        }
