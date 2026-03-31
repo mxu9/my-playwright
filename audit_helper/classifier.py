@@ -16,6 +16,15 @@ logger = logging.getLogger(__name__)
 class PDFClassifier:
     """PDF 分类器：主入口类"""
 
+    # 必需的配置项
+    REQUIRED_CONFIG_KEYS = [
+        "API_KEY",
+        "BASE_URL",
+        "MODEL_NAME",
+        "TEXT_DENSITY_THRESHOLD",
+        "PAGES_FOR_CLASSIFICATION"
+    ]
+
     def __init__(self, config_path: str = ".env"):
         """
         初始化分类器
@@ -32,6 +41,9 @@ class PDFClassifier:
         self.config = load_config(config_path)
         self.config_path = config_path
 
+        # 验证必需的配置项
+        self._validate_config()
+
         # 初始化组件
         self.pdf_processor = PDFProcessor(
             text_density_threshold=self.config["TEXT_DENSITY_THRESHOLD"],
@@ -43,6 +55,12 @@ class PDFClassifier:
             base_url=self.config["BASE_URL"],
             model_name=self.config["MODEL_NAME"]
         )
+
+    def _validate_config(self):
+        """验证配置是否包含所有必需项"""
+        for key in self.REQUIRED_CONFIG_KEYS:
+            if key not in self.config:
+                raise ValueError(f"配置缺少必填项: {key}")
 
     def run(self, input_dir: str = "data", output_dir: str = None) -> dict:
         """
@@ -140,6 +158,7 @@ class PDFClassifier:
         """生成汇总统计"""
         native_count = sum(1 for r in results if r.get("pdf_type") == "native")
         scanned_count = sum(1 for r in results if r.get("pdf_type") == "scanned")
+        unknown_count = sum(1 for r in results if r.get("pdf_type") == "unknown")
 
         # 类别分布
         category_distribution = {}
@@ -150,5 +169,6 @@ class PDFClassifier:
         return {
             "native_count": native_count,
             "scanned_count": scanned_count,
+            "unknown_count": unknown_count,
             "category_distribution": category_distribution
         }
