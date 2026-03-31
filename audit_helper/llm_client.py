@@ -2,6 +2,7 @@
 LLM 客户端模块：封装 langchain_openai 调用
 """
 import json
+import re
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -127,7 +128,6 @@ class LLMClient:
             }
         except json.JSONDecodeError:
             # 尝试提取 JSON
-            import re
             json_match = re.search(r'\{.*\}', response_text)
             if json_match:
                 result = json.loads(json_match.group())
