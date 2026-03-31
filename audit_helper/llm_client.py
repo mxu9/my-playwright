@@ -4,6 +4,7 @@ LLM 客户端模块：封装 langchain_openai 调用
 import json
 import logging
 import re
+from typing import List
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -20,6 +21,65 @@ PDF_CATEGORIES = [
     "银行余额对账单",
     "其他",
 ]
+
+
+class TokenUsageTracker:
+    """Token 使用跟踪器"""
+
+    def __init__(self):
+        self.calls: List[dict] = []  # 每次 LLM 调用的统计
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+        self.total_tokens = 0
+
+    def add_call(self, call_name: str, response) -> dict:
+        """
+        记录一次 LLM 调用的 token 使用
+
+        Args:
+            call_name: 调用名称（用于标识）
+            response: LLM 响应对象
+
+        Returns:
+            本次调用的 token 使用信息
+        """
+        # 从 response_metadata 中提取 token 使用信息
+        token_usage = {}
+        if hasattr(response, 'response_metadata') and response.response_metadata:
+            usage = response.response_metadata.get('token_usage', {})
+            token_usage = {
+                "prompt_tokens": usage.get('prompt_tokens', 0),
+                "completion_tokens": usage.get('completion_tokens', 0),
+                "total_tokens": usage.get('total_tokens', 0)
+            }
+            # 累加到总计
+            self.total_prompt_tokens += token_usage["prompt_tokens"]
+            self.total_completion_tokens += token_usage["completion_tokens"]
+            self.total_tokens += token_usage["total_tokens"]
+
+        call_info = {
+            "call_name": call_name,
+            "token_usage": token_usage
+        }
+        self.calls.append(call_info)
+        return call_info
+
+    def get_summary(self) -> dict:
+        """获取 token 使用汇总"""
+        return {
+            "total_calls": len(self.calls),
+            "total_prompt_tokens": self.total_prompt_tokens,
+            "total_completion_tokens": self.total_completion_tokens,
+            "total_tokens": self.total_tokens,
+            "calls_detail": self.calls
+        }
+
+    def reset(self):
+        """重置统计"""
+        self.calls = []
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+        self.total_tokens = 0
 
 
 class LLMClient:
@@ -57,6 +117,9 @@ class LLMClient:
             temperature=0.1  # 低温度，更稳定的输出
         )
 
+        # 初始化 token 使用跟踪器
+        self.token_tracker = TokenUsageTracker()
+
     def classify(self, content: str | list[str], pdf_type: str) -> dict:
         """
         分类 PDF 内容
@@ -66,7 +129,7 @@ class LLMClient:
             pdf_type: "native" 或 "scanned"
 
         Returns:
-            {"category": str, "confidence": float}
+            {"category": str, "confidence": float, "token_usage": dict}
         """
         system_prompt = self._build_system_prompt()
 
@@ -101,10 +164,16 @@ class LLMClient:
             response = self.client.invoke(messages)
         except Exception as e:
             logging.error(f"LLM API 调用失败: {e}")
-            return {"category": "其他", "confidence": 0.0}
+            return {"category": "其他", "confidence": 0.0, "token_usage": {}}
+
+        # 记录 token 使用
+        call_info = self.token_tracker.add_call(f"classify_{pdf_type}", response)
+        call_token_usage = call_info['token_usage']
 
         # 解析响应
-        return self._parse_response(response.content)
+        result = self._parse_response(response.content)
+        result["token_usage"] = call_token_usage
+        return result
 
     def _build_system_prompt(self) -> str:
         """构建系统提示"""
@@ -147,7 +216,19 @@ class LLMClient:
         # 验证 category 是否在有效列表中
         if category not in PDF_CATEGORIES:
             category = "其他"
-        return {
+        validated = {
             "category": category,
             "confidence": float(result.get("confidence", 0.5))
         }
+        # 保留 token_usage（如果存在）
+        if "token_usage" in result:
+            validated["token_usage"] = result["token_usage"]
+        return validated
+
+    def get_token_summary(self) -> dict:
+        """获取 token 使用汇总"""
+        return self.token_tracker.get_summary()
+
+    def reset_token_tracker(self):
+        """重置 token 统计"""
+        self.token_tracker.reset()

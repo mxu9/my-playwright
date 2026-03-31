@@ -5,7 +5,7 @@ import os
 import json
 from pathlib import Path
 from datetime import datetime
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 
 REQUIRED_CONFIG_KEYS = ["API_KEY", "BASE_URL", "MODEL_NAME"]
@@ -35,20 +35,21 @@ def load_config(config_path: str) -> dict:
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"配置文件不存在: {config_path}")
 
-    load_dotenv(config_path)
+    # 直接从文件读取配置，不影响全局环境变量
+    env_values = dotenv_values(config_path)
 
     config = {}
 
     # 检查必填项
     for key in REQUIRED_CONFIG_KEYS:
-        value = os.getenv(key)
+        value = env_values.get(key)
         if not value:
             raise ValueError(f"缺少必填配置项: {key}")
         config[key] = value
 
     # 加载可选项（使用默认值）
     for key, default_value in DEFAULT_CONFIG.items():
-        value = os.getenv(key)
+        value = env_values.get(key)
         if value is not None:
             # 尝试转换类型
             if isinstance(default_value, float):

@@ -73,6 +73,9 @@ class PDFClassifier:
         Returns:
             分类结果字典
         """
+        # 重置 token 统计
+        self.llm_client.reset_token_tracker()
+
         # 处理路径
         if not os.path.isabs(input_dir):
             base_dir = Path(__file__).parent
@@ -110,17 +113,24 @@ class PDFClassifier:
         # 生成汇总
         summary = self._generate_summary(results)
 
+        # 获取 token 使用汇总
+        token_summary = self.llm_client.get_token_summary()
+
         # 构建完整结果
         full_result = {
             "processing_time": get_current_timestamp(),
             "total_files": len(pdf_files),
             "results": results,
-            "summary": summary
+            "summary": summary,
+            "token_usage": token_summary
         }
 
         # 写入输出文件
         output_path = os.path.join(output_dir, self.config["OUTPUT_FILENAME"])
         write_json_output(full_result, output_path)
+
+        # 打印 token 使用统计
+        self._print_token_summary(token_summary)
 
         return full_result
 
@@ -145,7 +155,7 @@ class PDFClassifier:
             pdf_type=processed["pdf_type"]
         )
 
-        return {
+        result = {
             "filename": filename,
             "file_path": pdf_path,
             "pdf_type": processed["pdf_type"],
@@ -153,6 +163,12 @@ class PDFClassifier:
             "confidence": classified["confidence"],
             "pages_processed": processed["pages_processed"]
         }
+
+        # 包含本次调用的 token 使用信息
+        if "token_usage" in classified:
+            result["token_usage"] = classified["token_usage"]
+
+        return result
 
     def _generate_summary(self, results: list[dict]) -> dict:
         """生成汇总统计"""
@@ -172,3 +188,24 @@ class PDFClassifier:
             "unknown_count": unknown_count,
             "category_distribution": category_distribution
         }
+
+    def _print_token_summary(self, token_summary: dict):
+        """打印 Token 使用统计"""
+        print("\n" + "=" * 50)
+        print("Token 使用统计:")
+        print("=" * 50)
+        print(f"LLM 调用次数: {token_summary.get('total_calls', 0)}")
+        print(f"总输入 Token: {token_summary.get('total_prompt_tokens', 0):,}")
+        print(f"总输出 Token: {token_summary.get('total_completion_tokens', 0):,}")
+        print(f"总 Token 数: {token_summary.get('total_tokens', 0):,}")
+
+        # 显示每次调用详情
+        calls_detail = token_summary.get('calls_detail', [])
+        if calls_detail:
+            print("\n每次调用详情:")
+            for i, call in enumerate(calls_detail, 1):
+                usage = call['token_usage']
+                print(f"  [{i}] {call['call_name']}: "
+                      f"输入={usage.get('prompt_tokens', 0):,}, "
+                      f"输出={usage.get('completion_tokens', 0):,}, "
+                      f"总计={usage.get('total_tokens', 0):,}")
