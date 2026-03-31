@@ -1,10 +1,15 @@
 """
 PDF 处理模块：类型判断与内容提取
 """
-import os
 import base64
+import logging
+from io import BytesIO
+
 import pdfplumber
 import pypdfium2 as pdfium
+
+
+logger = logging.getLogger(__name__)
 
 
 class PDFProcessor:
@@ -91,8 +96,8 @@ class PDFProcessor:
                 return density >= self.text_density_threshold
 
         except Exception as e:
-            # 无法打开或处理，默认视为扫描件
-            print(f"处理 PDF 时出错: {e}")
+            # 无法打开或处理，记录警告并默认视为扫描件
+            logger.warning(f"处理 PDF 时出错 ({pdf_path}): {e}")
             return False
 
     def _extract_text(self, pdf_path: str, pages: int) -> str:
@@ -129,22 +134,23 @@ class PDFProcessor:
         Returns:
             base64 编码的图片列表
         """
-        from io import BytesIO
-
         pdf = pdfium.PdfDocument(pdf_path)
-        pages_to_extract = min(pages, len(pdf))
+        try:
+            pages_to_extract = min(pages, len(pdf))
 
-        base64_images = []
-        for i in range(pages_to_extract):
-            page = pdf.get_page(i)
-            # 渲染页面为图片，scale=200/72 约等于 200 DPI
-            bitmap = page.render(scale=200 / 72)
-            pil_image = bitmap.to_pil()
+            base64_images = []
+            for i in range(pages_to_extract):
+                page = pdf.get_page(i)
+                # 渲染页面为图片，scale=200/72 约等于 200 DPI
+                bitmap = page.render(scale=200 / 72)
+                pil_image = bitmap.to_pil()
 
-            # 转为 base64
-            buffered = BytesIO()
-            pil_image.save(buffered, format="PNG")
-            img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-            base64_images.append(img_base64)
+                # 转为 base64
+                buffered = BytesIO()
+                pil_image.save(buffered, format="PNG")
+                img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                base64_images.append(img_base64)
 
-        return base64_images
+            return base64_images
+        finally:
+            pdf.close()
