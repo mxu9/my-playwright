@@ -5,9 +5,9 @@ import os
 import logging
 from pathlib import Path
 
-from utils import load_config, scan_pdf_files, write_json_output, get_current_timestamp
-from pdf_processor import PDFProcessor
-from llm_client import LLMClient
+from .utils import load_config, scan_pdf_files, write_json_output, get_current_timestamp
+from .pdf_processor import PDFProcessor
+from .llm_client import LLMClient
 
 
 logger = logging.getLogger(__name__)

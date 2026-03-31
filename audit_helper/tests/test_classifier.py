@@ -11,7 +11,7 @@ import pytest
 import os
 import tempfile
 from unittest.mock import Mock, patch
-from classifier import PDFClassifier
+from audit_helper.classifier import PDFClassifier
 
 
 def test_classifier_initialization():

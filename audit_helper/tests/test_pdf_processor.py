@@ -6,7 +6,7 @@ import sys
 # 添加父目录到路径，以便导入模块
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from pdf_processor import PDFProcessor
+from audit_helper.pdf_processor import PDFProcessor
 
 
 def test_is_native_pdf_with_text_content():
