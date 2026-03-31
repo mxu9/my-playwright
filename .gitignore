@@ -13,3 +13,14 @@ node_modules/
 
 # Temp
 temp/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# audit_helper
+audit_helper/data/
+audit_helper/output/
+audit_helper/.env
