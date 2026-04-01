@@ -11,7 +11,8 @@ from audit_helper_poc.pdf_utils import (
     pdf_to_images,
     pdf_page_count,
     pdf_page_to_image,
-    build_marked_text
+    build_marked_text,
+    detect_pdf_type
 )
 
 
@@ -153,3 +154,108 @@ class TestBuildMarkedText:
         result = build_marked_text(["内容"])
 
         assert result == "[PAGE_1_START]\n内容\n[PAGE_1_END]"
+
+
+class TestDetectPdfType:
+    """测试 detect_pdf_type"""
+
+    def test_detect_native_pdf(self, tmp_path):
+        """测试检测原生 PDF"""
+        mock_page = MagicMock()
+        mock_page.extract_text.return_value = "这是一段测试文本内容用于检测PDF类型和验证文本密度计算" * 10
+        mock_page.width = 500
+        mock_page.height = 700
+
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [mock_page, mock_page]
+        mock_pdf.__enter__ = Mock(return_value=mock_pdf)
+        mock_pdf.__exit__ = Mock(return_value=False)
+
+        mock_pdfplumber = MagicMock()
+        mock_pdfplumber.open.return_value = mock_pdf
+
+        with patch.dict('sys.modules', {'pdfplumber': mock_pdfplumber}):
+            pdf_file = tmp_path / "test.pdf"
+            pdf_file.write_bytes(b"fake pdf content")
+
+            # 重新导入以使用 mock
+            import importlib
+            import audit_helper_poc.pdf_utils as pdf_utils
+            importlib.reload(pdf_utils)
+
+            result = pdf_utils.detect_pdf_type(str(pdf_file))
+
+            assert result == "native"
+
+    def test_detect_scanned_pdf(self, tmp_path):
+        """测试检测扫描件 PDF"""
+        mock_page = MagicMock()
+        mock_page.extract_text.return_value = ""
+        mock_page.width = 500
+        mock_page.height = 700
+
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [mock_page]
+        mock_pdf.__enter__ = Mock(return_value=mock_pdf)
+        mock_pdf.__exit__ = Mock(return_value=False)
+
+        mock_pdfplumber = MagicMock()
+        mock_pdfplumber.open.return_value = mock_pdf
+
+        with patch.dict('sys.modules', {'pdfplumber': mock_pdfplumber}):
+            pdf_file = tmp_path / "test.pdf"
+            pdf_file.write_bytes(b"fake pdf content")
+
+            import importlib
+            import audit_helper_poc.pdf_utils as pdf_utils
+            importlib.reload(pdf_utils)
+
+            result = pdf_utils.detect_pdf_type(str(pdf_file))
+
+            assert result == "scanned"
+
+    def test_detect_with_custom_threshold(self, tmp_path):
+        """测试自定义阈值"""
+        mock_page = MagicMock()
+        mock_page.extract_text.return_value = "少量文本"
+        mock_page.width = 500
+        mock_page.height = 700
+
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [mock_page]
+        mock_pdf.__enter__ = Mock(return_value=mock_pdf)
+        mock_pdf.__exit__ = Mock(return_value=False)
+
+        mock_pdfplumber = MagicMock()
+        mock_pdfplumber.open.return_value = mock_pdf
+
+        with patch.dict('sys.modules', {'pdfplumber': mock_pdfplumber}):
+            pdf_file = tmp_path / "test.pdf"
+            pdf_file.write_bytes(b"fake pdf content")
+
+            import importlib
+            import audit_helper_poc.pdf_utils as pdf_utils
+            importlib.reload(pdf_utils)
+
+            result_high = pdf_utils.detect_pdf_type(str(pdf_file), text_density_threshold=1.0)
+            assert result_high == "scanned"
+
+            result_low = pdf_utils.detect_pdf_type(str(pdf_file), text_density_threshold=0.000001)
+            assert result_low == "native"
+
+    def test_detect_exception_returns_scanned(self, tmp_path):
+        """测试异常情况返回 scanned"""
+        mock_pdfplumber = MagicMock()
+        mock_pdfplumber.open.side_effect = Exception("无法打开文件")
+
+        with patch.dict('sys.modules', {'pdfplumber': mock_pdfplumber}):
+            pdf_file = tmp_path / "test.pdf"
+            pdf_file.write_bytes(b"fake pdf content")
+
+            import importlib
+            import audit_helper_poc.pdf_utils as pdf_utils
+            importlib.reload(pdf_utils)
+
+            result = pdf_utils.detect_pdf_type(str(pdf_file))
+
+            assert result == "scanned"

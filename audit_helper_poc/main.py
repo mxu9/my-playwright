@@ -22,8 +22,8 @@ from pathlib import Path
 # 1. python -m audit_helper_poc.main (推荐)
 # 2. cd audit_helper_poc && python main.py
 if __name__ == "__main__" and __package__ is None:
-    # 直接运行 main.py 时，添加父目录到路径
-    sys.path.insert(0, str(Path(__file__).parent))
+    # 直接运行 main.py 时，添加项目根目录到路径
+    sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from audit_helper_poc.planner import Planner
 

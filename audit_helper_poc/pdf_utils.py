@@ -167,3 +167,55 @@ def build_marked_text(page_texts: List[str]) -> str:
         sections.append(section)
 
     return "\n\n".join(sections)
+
+
+def detect_pdf_type(pdf_path: str, text_density_threshold: float = 0.0001, pages_to_check: int = 2) -> str:
+    """
+    检测 PDF 类型：native（原生可提取文本）或 scanned（扫描件需 OCR）。
+
+    使用 pdfplumber 提取文本，计算文本密度判断类型。
+
+    Args:
+        pdf_path: PDF 文件路径
+        text_density_threshold: 文本密度阈值，默认 0.0001
+            (总字符数 / 总页面面积)
+        pages_to_check: 检查的前 N 页，默认 2
+
+    Returns:
+        "native" 或 "scanned"
+    """
+    try:
+        import pdfplumber
+    except ImportError:
+        raise ImportError("未安装 pdfplumber，请运行: pip install pdfplumber")
+
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            total_chars = 0
+            total_area = 0
+
+            # 检查前 N 页
+            pages = min(pages_to_check, len(pdf.pages))
+
+            for i in range(pages):
+                page = pdf.pages[i]
+                text = page.extract_text() or ""
+                total_chars += len(text)
+
+                # 页面面积
+                width = page.width
+                height = page.height
+                total_area += width * height
+
+            if total_area == 0:
+                return "scanned"
+
+            # 文本密度计算
+            density = total_chars / total_area
+            logger.debug(f"PDF 文本密度: {density:.6f}, 阈值: {text_density_threshold}")
+
+            return "native" if density >= text_density_threshold else "scanned"
+
+    except Exception as e:
+        logger.warning(f"处理 PDF 时出错 ({pdf_path}): {e}")
+        return "scanned"
