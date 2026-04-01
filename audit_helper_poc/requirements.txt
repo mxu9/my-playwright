@@ -1,0 +1,20 @@
+# LangChain 核心包
+langchain>=1.0.3
+langchain-core>=1.0.3
+langchain-openai>=1.0.2
+
+# PDF 处理
+pypdfium2>=0.3.0
+
+# 图片处理
+Pillow>=10.0.0
+
+# OCR
+paddleocr>=2.7.0
+paddlepaddle>=2.5.0
+
+# 配置加载
+python-dotenv>=1.0.0
+
+# 测试
+pytest>=7.0.0
