@@ -1,6 +1,7 @@
 # audit_helper_poc/planner.py
 """PDF 处理主控制器"""
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -123,14 +124,29 @@ class Planner:
             file_start_time = get_current_timestamp()
             self._update_file_status(output_file, i, "processing", start_time=file_start_time)
 
-            # 处理文件
-            result = self._process_single_file(pdf_path)
+            try:
+                # 处理文件
+                result = self._process_single_file(pdf_path)
+                status = "success" if result["subagent_result"]["success"] else "failed"
+            except Exception as e:
+                self.logger.error(f"处理文件失败: {e}")
+                result = {
+                    "pdf_type": None,
+                    "category": None,
+                    "subagent_result": {
+                        "success": False,
+                        "data": None,
+                        "error": str(e),
+                        "model": self.config.get("MODEL_NAME", ""),
+                        "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                    }
+                }
+                status = "error"
 
             # 更新状态为 completed
             file_end_time = get_current_timestamp()
             self._update_file_result(output_file, i, result, end_time=file_end_time)
 
-            status = "success" if result["subagent_result"]["success"] else "failed"
             self.logger.info(f"文件 {i + 1}/{len(pdf_files)} 处理完成，状态: {status}")
 
         overall_end_time = get_current_timestamp()
@@ -244,18 +260,23 @@ class Planner:
         for f in data["files"]:
             cat = f.get("category", "其他")
             category_distribution[cat] = category_distribution.get(cat, 0) + 1
-            if f["subagent_result"]:
-                total_tokens += f["subagent_result"]["token_usage"]["total_tokens"]
+            token_usage = f.get("subagent_result", {}) or {}
+            token_usage = token_usage.get("token_usage", {})
+            total_tokens += token_usage.get("total_tokens", 0)
 
         data["summary"] = {
             "native_count": native_count,
             "scanned_count": scanned_count,
             "category_distribution": category_distribution,
             "total_token_usage": {
-                "prompt_tokens": sum(f["subagent_result"]["token_usage"]["prompt_tokens"]
-                                     for f in data["files"] if f["subagent_result"]),
-                "completion_tokens": sum(f["subagent_result"]["token_usage"]["completion_tokens"]
-                                         for f in data["files"] if f["subagent_result"]),
+                "prompt_tokens": sum(
+                    f.get("subagent_result", {}).get("token_usage", {}).get("prompt_tokens", 0)
+                    for f in data["files"]
+                ),
+                "completion_tokens": sum(
+                    f.get("subagent_result", {}).get("token_usage", {}).get("completion_tokens", 0)
+                    for f in data["files"]
+                ),
                 "total_tokens": total_tokens
             }
         }
@@ -265,7 +286,6 @@ class Planner:
 
     def _calculate_duration(self, start: str, end: str) -> str:
         """计算耗时"""
-        from datetime import datetime
         start_dt = datetime.fromisoformat(start)
         end_dt = datetime.fromisoformat(end)
         delta = end_dt - start_dt
