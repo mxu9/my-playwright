@@ -1,5 +1,6 @@
 # audit_helper_poc/subagents/__init__.py
 """Subagent 注册模块"""
 from .default_subagent import DefaultSubagent
+from .rent_contract_subagent import RentContractSubagent
 
-__all__ = ["DefaultSubagent"]
+__all__ = ["DefaultSubagent", "RentContractSubagent"]
