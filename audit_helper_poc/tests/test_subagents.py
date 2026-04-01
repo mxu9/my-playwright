@@ -2,6 +2,15 @@
 import pytest
 from audit_helper_poc.subagents.default_subagent import DefaultSubagent
 from audit_helper_poc.subagents.rent_contract_subagent import RentContractSubagent
+from audit_helper_poc.subagents import (
+    VatTaxSubagent,
+    IncomeTaxSubagent,
+    FinancialReportSubagent,
+    TianyanchaSubagent,
+    BankConfirmationSubagent,
+    BankDetailSubagent,
+    BankBalanceSubagent,
+)
 
 
 def test_default_subagent_category():
@@ -48,3 +57,35 @@ def test_rent_contract_subagent_invoke_returns_mock_data():
     assert result["error"] is None
     assert result["model"] == "gpt-4o"
     assert result["token_usage"]["total_tokens"] > 0
+
+
+def test_all_subagents_categories():
+    """测试所有 subagent 的 category 属性"""
+    expected = {
+        VatTaxSubagent: "增值税纳税申报表",
+        IncomeTaxSubagent: "企业所得税纳税申报表",
+        FinancialReportSubagent: "财务报表",
+        TianyanchaSubagent: "天眼查信息",
+        BankConfirmationSubagent: "银行询证函",
+        BankDetailSubagent: "银行明细对账单",
+        BankBalanceSubagent: "银行余额对账单",
+    }
+
+    for cls, expected_category in expected.items():
+        subagent = cls()
+        assert subagent.category == expected_category
+
+
+def test_all_subagents_invoke_returns_success():
+    """测试所有 subagent invoke 返回成功"""
+    config = {"MODEL_NAME": "test-model"}
+
+    for cls in [VatTaxSubagent, IncomeTaxSubagent, FinancialReportSubagent,
+                TianyanchaSubagent, BankConfirmationSubagent, BankDetailSubagent,
+                BankBalanceSubagent]:
+        subagent = cls()
+        result = subagent.invoke("/test.pdf", "native", config)
+        assert result["success"] is True
+        assert result["data"] is not None
+        assert result["error"] is None
+        assert result["token_usage"]["total_tokens"] > 0
