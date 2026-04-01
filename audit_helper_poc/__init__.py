@@ -2,5 +2,6 @@
 """audit_helper_poc - PDF 处理框架"""
 from .base_subagent import BaseSubagent
 from .logger import Logger
+from .planner import Planner
 
-__all__ = ["BaseSubagent", "Logger"]
+__all__ = ["BaseSubagent", "Logger", "Planner"]
