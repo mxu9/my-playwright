@@ -148,10 +148,13 @@ class RentContractSubagent(BaseSubagent):
     def _init_llm_client(self, config: dict):
         """初始化 LLM 客户端"""
         if self._llm_client is None:
+            # 读取 TEMPERATURE 配置，默认 0.1
+            temperature = float(config.get("TEMPERATURE", "0.1"))
             self._llm_client = LLMClient(
                 api_key=config["API_KEY"],
                 base_url=config["BASE_URL"],
-                model_name=config["MODEL_NAME"]
+                model_name=config["MODEL_NAME"],
+                temperature=temperature
             )
         else:
             self._llm_client.reset_token_tracker()

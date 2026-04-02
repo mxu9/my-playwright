@@ -93,10 +93,13 @@ class Planner:
     def _init_llm_client(self) -> LLMClient:
         """初始化 LLM 客户端"""
         if self._llm_client is None:
+            # 读取 TEMPERATURE 配置，默认 0.1
+            temperature = float(self.config.get("TEMPERATURE", "0.1"))
             self._llm_client = LLMClient(
                 api_key=self.config["API_KEY"],
                 base_url=self.config["BASE_URL"],
-                model_name=self.config["MODEL_NAME"]
+                model_name=self.config["MODEL_NAME"],
+                temperature=temperature
             )
         else:
             self._llm_client.reset_token_tracker()
