@@ -283,11 +283,30 @@ class Planner:
         category = self._classify_pdf(pdf_path, pdf_type, llm_client)
         self.logger.debug(f"分类结果: {category}")
 
-        # Step 4: 获取对应的 subagent
+        # Step 4: 检查是否需要跳过该类型
+        skip_categories = self.config.get("SKIP_CATEGORIES", "")
+        if skip_categories:
+            skip_list = [c.strip() for c in skip_categories.split(",") if c.strip()]
+            if category in skip_list:
+                self.logger.info(f"跳过类型: {category} (配置 SKIP_CATEGORIES)")
+                return {
+                    "pdf_type": pdf_type,
+                    "category": category,
+                    "subagent_result": {
+                        "success": True,
+                        "data": None,
+                        "error": None,
+                        "skipped": True,
+                        "model": "",
+                        "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                    }
+                }
+
+        # Step 5: 获取对应的 subagent
         subagent = self._subagents.get(category, self._subagents["其他"])
         self.logger.info(f"调用 subagent: {subagent.__class__.__name__}")
 
-        # Step 5: 执行 subagent
+        # Step 6: 执行 subagent
         subagent_result = subagent.invoke(pdf_path, pdf_type, self.config)
 
         return {
