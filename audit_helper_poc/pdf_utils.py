@@ -1,107 +1,29 @@
 """
 PDF 工具模块：PDF 转图片、OCR 等工具函数
+
+注意：PDF 旋转纠偏已移至 pdf_preprocessor.py，调用此模块前应先进行预处理。
 """
 import base64
 import logging
 from io import BytesIO
 from pathlib import Path
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional
 
-import numpy as np
 import pypdfium2  # type: ignore
 from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-# 低字符数阈值（低于此值时参考相邻页面角度）
-LOW_CHAR_THRESHOLD = 200
 
-# 测试的旋转角度
-TEST_ANGLES = [0, 90, 180, 270]
-
-
-# 全局 OCR 实例（延迟初始化）
-_ocr_instance = None
-
-
-def _get_ocr_instance():
-    """获取 OCR 实例（延迟初始化，关闭自动角度纠正）"""
-    global _ocr_instance
-    if _ocr_instance is None:
-        try:
-            from paddleocr import PaddleOCR
-            logger.info("正在初始化 PaddleOCR（关闭自动角度纠正）...")
-            _ocr_instance = PaddleOCR(use_angle_cls=False, lang="ch", show_log=False)
-        except ImportError:
-            raise ImportError("未安装 PaddleOCR，请运行: pip install paddleocr")
-    return _ocr_instance
-
-
-def _detect_rotation_by_ocr(img: Image.Image) -> Tuple[int, int, Dict]:
-    """
-    通过 OCR 识别效果检测最佳旋转角度。
-
-    Args:
-        img: PIL Image
-
-    Returns:
-        (最佳角度, 识别字符数, 各角度详细结果)
-    """
-    ocr = _get_ocr_instance()
-
-    img_array = np.array(img)
-    results = {}
-
-    for angle in TEST_ANGLES:
-        rotated = img.rotate(angle, expand=True)
-        arr = np.array(rotated)
-
-        # OCR 识别
-        ocr_result = ocr.ocr(arr, cls=False)
-
-        if ocr_result and ocr_result[0]:
-            total_chars = sum(len(line[1][0]) for line in ocr_result[0])
-            region_count = len(ocr_result[0])
-        else:
-            total_chars = 0
-            region_count = 0
-
-        results[angle] = {
-            "total_chars": total_chars,
-            "region_count": region_count
-        }
-
-    # 选择识别字符最多的角度
-    best_angle = max(results.keys(), key=lambda a: results[a]["total_chars"])
-    best_chars = results[best_angle]["total_chars"]
-
-    return best_angle, best_chars, results
-
-
-def _correct_rotation(img: Image.Image, angle: int) -> Image.Image:
-    """
-    纠正图片旋转角度。
-
-    Args:
-        img: PIL Image
-        angle: 需要旋转的角度
-
-    Returns:
-        纠正后的 PIL Image
-    """
-    if angle == 0:
-        return img
-    return img.rotate(angle, expand=True)
-
-
-def pdf_to_images(pdf_path: str, pages: Optional[List[int]] = None, auto_rotate: bool = True) -> List[str]:
+def pdf_to_images(pdf_path: str, pages: Optional[List[int]] = None) -> List[str]:
     """
     将 PDF 指定页转为 base64 图片列表。
 
+    注意：调用此函数前，PDF 应已通过预处理纠偏。
+
     Args:
-        pdf_path: PDF 文件路径
+        pdf_path: PDF 文件路径（预处理后的）
         pages: 页码列表（1-indexed），为 None 时转换所有页
-        auto_rotate: 是否自动检测并纠正旋转角度，默认 True
 
     Returns:
         base64 编码的图片列表
@@ -124,9 +46,6 @@ def pdf_to_images(pdf_path: str, pages: Optional[List[int]] = None, auto_rotate:
             # 转换为 0-indexed
             page_indices = [p - 1 for p in pages]
 
-        # 收集所有页面图片和检测结果
-        page_data = []
-
         for page_index in page_indices:
             if page_index < 0 or page_index >= len(pdf):
                 logger.warning(f"页码 {page_index + 1} 超出范围，跳过")
@@ -137,90 +56,11 @@ def pdf_to_images(pdf_path: str, pages: Optional[List[int]] = None, auto_rotate:
             bitmap = page.render(scale=2)
             pil_image = bitmap.to_pil()
 
-            page_data.append({
-                "index": page_index,
-                "image": pil_image
-            })
-
-        # 如果需要自动旋转检测
-        if auto_rotate and page_data:
-            logger.info("正在检测并纠正旋转角度...")
-
-            # 第一轮：检测每页角度
-            detections = []
-            for item in page_data:
-                img = item["image"]
-                best_angle, best_chars, ocr_results = _detect_rotation_by_ocr(img)
-                detections.append({
-                    "index": item["index"],
-                    "image": img,
-                    "best_angle": best_angle,
-                    "best_chars": best_chars,
-                    "ocr_results": ocr_results
-                })
-                logger.debug(f"第 {item['index'] + 1} 页: 检测角度={best_angle}°, 字符数={best_chars}")
-
-            # 第二轮：确定最终角度（低字符数页面参考相邻页面）
-            for i, d in enumerate(detections):
-                img = d["image"]
-                best_angle = d["best_angle"]
-                best_chars = d["best_chars"]
-                ocr_results = d["ocr_results"]
-
-                final_angle = best_angle
-
-                # 低字符数页面：参考相邻高字符数页面
-                if best_chars < LOW_CHAR_THRESHOLD:
-                    neighbor_angles = []
-                    neighbor_chars_list = []
-
-                    # 向前查找
-                    for j in range(i - 1, -1, -1):
-                        if detections[j]["best_chars"] >= LOW_CHAR_THRESHOLD:
-                            neighbor_angles.append(detections[j]["best_angle"])
-                            neighbor_chars_list.append(detections[j]["best_chars"])
-                            break
-
-                    # 向后查找
-                    for j in range(i + 1, len(detections)):
-                        if detections[j]["best_chars"] >= LOW_CHAR_THRESHOLD:
-                            neighbor_angles.append(detections[j]["best_angle"])
-                            neighbor_chars_list.append(detections[j]["best_chars"])
-                            break
-
-                    if neighbor_angles:
-                        # 使用相邻页面中字符数更多的那个作为参考
-                        if len(neighbor_angles) == 1:
-                            neighbor_angle = neighbor_angles[0]
-                        else:
-                            max_idx = neighbor_chars_list.index(max(neighbor_chars_list))
-                            neighbor_angle = neighbor_angles[max_idx]
-
-                        # 检查相邻角度的 OCR 效果是否接近最佳
-                        neighbor_chars = ocr_results.get(neighbor_angle, {}).get("total_chars", 0)
-                        if neighbor_chars >= best_chars * 0.9:
-                            if neighbor_angle != best_angle:
-                                final_angle = neighbor_angle
-                                logger.debug(f"第 {d['index'] + 1} 页: 低字符数({best_chars})，参考相邻页面角度 {neighbor_angle}°")
-
-                # 纠正旋转
-                if final_angle != 0:
-                    img = _correct_rotation(img, final_angle)
-                    logger.info(f"第 {d['index'] + 1} 页: 旋转纠正 {final_angle}°")
-
-                # 转为 base64
-                buffered = BytesIO()
-                img.save(buffered, format="PNG")
-                img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                base64_images.append(img_base64)
-        else:
-            # 不需要旋转检测，直接转换
-            for item in page_data:
-                img = item["image"]
-                buffered = BytesIO()
-                img.save(buffered, format="PNG")
-                img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                base64_images.append(img_base64)
+            # 转为 base64
+            buffered = BytesIO()
+            pil_image.save(buffered, format="PNG")
+            img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            base64_images.append(img_base64)
 
     finally:
         pdf.close()

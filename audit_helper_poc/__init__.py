@@ -3,5 +3,6 @@
 from .base_subagent import BaseSubagent
 from .logger import Logger
 from .planner import Planner
+from .pdf_preprocessor import PDFPreprocessor
 
-__all__ = ["BaseSubagent", "Logger", "Planner"]
+__all__ = ["BaseSubagent", "Logger", "Planner", "PDFPreprocessor"]

@@ -21,6 +21,7 @@ from .subagents import (
 )
 from .pdf_utils import detect_pdf_type, ocr_pdf_pages, build_marked_text, pdf_to_images
 from .llm_utils import LLMClient, build_multimodal_content
+from .pdf_preprocessor import PDFPreprocessor
 
 
 # PDF 类别列表
@@ -147,9 +148,19 @@ class Planner:
             base_dir = Path(__file__).parent
             output_file = str(base_dir / output_file)
 
+        # Step 0: 预处理（检测和纠偏）
+        preprocessed_dir = str(Path(output_file).parent / "preprocessed")
+        self.logger.info("Step 0: 开始预处理（检测和纠偏）...")
+        preprocessor = PDFPreprocessor(output_dir=preprocessed_dir)
+        preprocess_report = preprocessor.preprocess_directory(input_dir)
+        self.logger.info(f"预处理完成: 成功 {preprocess_report['success_count']}, 失败 {preprocess_report['failed_count']}")
+
+        # 使用预处理后的目录
+        working_dir = preprocessed_dir
+
         # 扫描 PDF 文件
-        self.logger.info(f"扫描目录: {input_dir}")
-        pdf_files = scan_pdf_files(input_dir)
+        self.logger.info(f"扫描目录: {working_dir}")
+        pdf_files = scan_pdf_files(working_dir)
         self.logger.info(f"发现 {len(pdf_files)} 个 PDF 文件")
 
         if not pdf_files:
@@ -158,9 +169,11 @@ class Planner:
                 "start_time": get_current_timestamp(),
                 "end_time": get_current_timestamp(),
                 "input_dir": input_dir,
+                "preprocessed_dir": preprocessed_dir,
                 "total_files": 0,
                 "files": [],
-                "summary": {}
+                "summary": {},
+                "preprocess_report": preprocess_report
             }
 
         # 初始化结果文件
@@ -205,7 +218,10 @@ class Planner:
         overall_end_time = get_current_timestamp()
 
         # 生成汇总
-        final_result = self._finalize_result(output_file, overall_start_time, overall_end_time, input_dir)
+        final_result = self._finalize_result(
+            output_file, overall_start_time, overall_end_time, input_dir,
+            preprocessed_dir, preprocess_report
+        )
 
         self.logger.info("所有文件处理完成")
         self.logger.info(f"总耗时: {self._calculate_duration(overall_start_time, overall_end_time)}")
@@ -467,13 +483,19 @@ class Planner:
         output_file: str,
         start_time: str,
         end_time: str,
-        input_dir: str
+        input_dir: str,
+        preprocessed_dir: str = None,
+        preprocess_report: dict = None
     ) -> dict:
         """生成最终汇总结果"""
         data = read_json_file(output_file)
         data["start_time"] = start_time
         data["end_time"] = end_time
         data["input_dir"] = input_dir
+        if preprocessed_dir:
+            data["preprocessed_dir"] = preprocessed_dir
+        if preprocess_report:
+            data["preprocess_report"] = preprocess_report
 
         # 计算汇总
         native_count = sum(1 for f in data["files"] if f["pdf_type"] == "native")
